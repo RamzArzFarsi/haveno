@@ -65,6 +65,7 @@ import haveno.core.trade.protocol.ProcessModelServiceProvider;
 import haveno.core.trade.protocol.TradeListener;
 import haveno.core.trade.protocol.TradePeer;
 import haveno.core.trade.protocol.TradeProtocol;
+import haveno.core.trade.statistics.TradeStatisticsManager;
 import haveno.core.util.PriceUtil;
 import haveno.core.util.VolumeUtil;
 import haveno.core.xmr.model.XmrAddressEntry;
@@ -812,12 +813,14 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
         while (!isFullyInitialized) HavenoUtils.waitFor(100); // TODO: use proper notification and refactor isInitialized, fullyInitialized, and arbitrator idling
     }
 
+    // TODO: throw if trade manager is null
     public void requestPersistence() {
         if (processModel.getTradeManager() != null) processModel.getTradeManager().requestPersistence();
     }
 
+    // TODO: throw if trade manager is null
     public void persistNow(@Nullable Runnable completeHandler) {
-        processModel.getTradeManager().persistNow(completeHandler);
+        if (processModel.getTradeManager() != null) processModel.getTradeManager().persistNow(completeHandler);
     }
 
     public TradeProtocol getProtocol() {
@@ -1098,7 +1101,6 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
             synchronized (HavenoUtils.getWalletFunctionLock()) {
                 MoneroTxWallet tx = wallet.createTx(txConfig);
                 exportMultisigHex();
-                saveWallet();
                 return tx;
             }
         }
@@ -1107,7 +1109,7 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
     public void exportMultisigHex() {
         synchronized (walletLock) {
             getSelf().setUpdatedMultisigHex(wallet.exportMultisigHex());
-            requestPersistence();
+            saveWallet();
         }
     }
 
@@ -1888,7 +1890,7 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
         }
 
         this.state = state;
-        requestPersistence();
+        persistNow(null);
         UserThread.execute(() -> {
             stateProperty.set(state);
             phaseProperty.set(state.getPhase());
@@ -1920,7 +1922,7 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
         }
 
         this.payoutState = payoutState;
-        requestPersistence();
+        persistNow(null);
         UserThread.execute(() -> payoutStateProperty.set(payoutState));
     }
 
@@ -1936,6 +1938,7 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
         }
 
         this.disputeState = disputeState;
+        persistNow(null);
         UserThread.execute(() -> {
             disputeStateProperty.set(disputeState);
         });
@@ -2476,7 +2479,7 @@ public abstract class Trade extends XmrWalletBase implements Tradable, Model {
             // publish after random delay within 24 hours
             UserThread.runAfterRandomDelay(() -> {
                 if (!isShutDownStarted) doPublishTradeStatistics();
-            }, 0, 24, TimeUnit.HOURS);
+            }, 0, TradeStatisticsManager.PUBLISH_STATS_RANDOM_DELAY_HOURS * 60 * 60 * 1000, TimeUnit.MILLISECONDS);
         }
     }
 
